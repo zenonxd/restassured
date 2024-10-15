@@ -1,5 +1,6 @@
 package com.educandoweb.dscommerce.controllers;
 
+import com.educandoweb.dscommerce.TokenUtilRA;
 import io.restassured.http.ContentType;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,20 +12,31 @@ import java.util.List;
 import java.util.Map;
 
 import static io.restassured.RestAssured.*;
-import static io.restassured.matcher.RestAssuredMatchers.*;
 import static org.hamcrest.Matchers.*;
 
 public class ProductControllerRA {
 
 
+    private String clientUsername, clientPassword, adminUsername, adminPassword;
+    private String clientToken, adminToken, invalidToken;
     private Long existingId, nonExistingId, dependantId;
 
     private Map<String, Object> postProductInstance;
 
     @BeforeEach
-    public void setUp() {
+    public void setUp() throws Exception {
         //baseUri pertence ao RestAssured
         baseURI = "http://localhost:8080";
+
+        clientUsername = "maria@gmail.com";
+        clientPassword = "123456";
+        clientToken = TokenUtilRA.obtainAccessToken(clientUsername, clientPassword);
+
+        adminUsername = "alex@gmail.com";
+        adminPassword = "123456";
+        adminToken = TokenUtilRA.obtainAccessToken(adminUsername, adminPassword);
+
+        invalidToken = adminToken + "xpto"; // invalid token
 
         postProductInstance = new HashMap<>();
         postProductInstance.put("name", "Meu produto");
@@ -104,27 +116,244 @@ public class ProductControllerRA {
 
     @Test
     public void insertShouldReturnProductCreatedWhenAdminLogged() {
+
         JSONObject newProduct = new JSONObject(postProductInstance);
 
-        //parei aqui, falta inserir o TokenUtil e continuar
+        String productAsString = newProduct.toString();
 
 
         given()
-                //isso serve pra especificar o tipo da informação
-                .header("Content-Type", "application/json")
+                //isso serve para especificar o tipo da informação
+                .header("Content-type", "application/json")
                 .header("Authorization", "Bearer " + adminToken)
-                .body(newProduct)
+                .body(productAsString)
                 .contentType(ContentType.JSON)
                 .accept(ContentType.JSON)
-
-                .when()
-
-                .port("/products")
-                .then()
+        .when()
+                .post("/products")
+        .then()
                 .statusCode(201)
                 .body("name", equalTo("Meu produto"))
                 .body("price", is(50.0F))
-                .body("categories", hasItems(2, 3))
+                .body("categories.id", hasItems(2, 3));
 
     }
+
+    @Test
+    public void insertShouldReturn422AndCustomMessageWhenLoggedAdminAndNameInvalid() {
+        //colocando propriedade name invalida
+        postProductInstance.put("name", "aa");
+        JSONObject newProduct = new JSONObject(postProductInstance);
+
+        String productAsString = newProduct.toString();
+
+        given()
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + adminToken)
+                .body(productAsString)
+                .contentType(ContentType.JSON)
+                .accept(ContentType.JSON)
+                .when()
+                .post("/products")
+                .then()
+                .statusCode(422)
+                .body("errors.message[0]", equalTo("Nome precisa ter de 3 a 80 caracteres"));
+
+    }
+
+    @Test
+    public void insertShouldReturn422AndCustomMessageWhenAdminLoggedAndDescriptionInvalid() {
+        //colocando propriedade description invalida
+        postProductInstance.put("description", "aa");
+        JSONObject newProduct = new JSONObject(postProductInstance);
+
+        String productAsString = newProduct.toString();
+
+        given()
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + adminToken)
+                .body(productAsString)
+                .contentType(ContentType.JSON)
+                .accept(ContentType.JSON)
+                .when()
+                .post("/products")
+                .then()
+                .statusCode(422)
+                .body("errors.message[0]", equalTo("Descrição precisa ter no mínimo 10 caracteres"));
+    }
+
+    @Test
+    public void insertShouldReturn422AndCustomMessageWhenAdminLoggedAndPriceNegative() {
+        //colocando propriedade price negativa
+        postProductInstance.put("price", -50.F);
+        JSONObject newProduct = new JSONObject(postProductInstance);
+
+        String productAsString = newProduct.toString();
+
+        given()
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + adminToken)
+                .body(productAsString)
+                .contentType(ContentType.JSON)
+                .accept(ContentType.JSON)
+                .when()
+                .post("/products")
+                .then()
+                .statusCode(422)
+                .body("errors.message[0]", equalTo("O preço deve ser positivo"));
+    }
+
+    @Test
+    public void insertShouldReturn422AndCustomMessageWhenAdminLoggedAndPriceIsZero() {
+        //colocando propriedade price zerada
+        postProductInstance.put("price", -0.0F);
+        JSONObject newProduct = new JSONObject(postProductInstance);
+
+        String productAsString = newProduct.toString();
+
+        given()
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + adminToken)
+                .body(productAsString)
+                .contentType(ContentType.JSON)
+                .accept(ContentType.JSON)
+                .when()
+                .post("/products")
+                .then()
+                .statusCode(422)
+                .body("errors.message[0]", equalTo("O preço deve ser positivo"));
+    }
+
+    @Test
+    public void insertShouldReturn422AndCustomMessageWhenAdminLoggedAndNoCategories() {
+        //colocando propriedade de categorias zerada
+        postProductInstance.put("categories", null);
+        JSONObject newProduct = new JSONObject(postProductInstance);
+
+        String productAsString = newProduct.toString();
+
+        given()
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + adminToken)
+                .body(productAsString)
+                .contentType(ContentType.JSON)
+                .accept(ContentType.JSON)
+                .when()
+                .post("/products")
+                .then()
+                .statusCode(422)
+                .body("errors.message[0]", equalTo("Deve ter pelo menos uma categoria"));
+    }
+
+    @Test
+    public void insertShouldReturn403WhenLoggedAsClient() {
+        JSONObject newProduct = new JSONObject(postProductInstance);
+
+        String productAsString = newProduct.toString();
+
+
+        given()
+                //isso serve para especificar o tipo da informação
+                .header("Content-type", "application/json")
+                .header("Authorization", "Bearer " + clientToken)
+                .body(productAsString)
+                .contentType(ContentType.JSON)
+                .accept(ContentType.JSON)
+                .when()
+                .post("/products")
+                .then()
+                .statusCode(403);
+    }
+
+    @Test
+    public void insertShouldReturn401WhenInvalidToken() {
+        JSONObject newProduct = new JSONObject(postProductInstance);
+
+        String productAsString = newProduct.toString();
+
+
+        given()
+                //isso serve para especificar o tipo da informação
+                .header("Content-type", "application/json")
+                .header("Authorization", "Bearer " + invalidToken)
+                .body(productAsString)
+                .contentType(ContentType.JSON)
+                .accept(ContentType.JSON)
+                .when()
+                .post("/products")
+                .then()
+                .statusCode(401);
+    }
+
+    @Test
+    public void deleteShouldReturnNoContentWhenLoggedAsAdmin() {
+        existingId = 5L;
+
+        given()
+                //isso serve para especificar o tipo da informação
+                .header("Authorization", "Bearer " + adminToken)
+
+                .when()
+                .delete("/products/{id}", existingId)
+                .then()
+                .statusCode(204);
+    }
+
+    @Test
+    public void deleteShouldReturn404WhenLoggedAsAdmin() {
+        nonExistingId = 288L;
+
+        given()
+                //isso serve para especificar o tipo da informação
+                .header("Authorization", "Bearer " + adminToken)
+
+                .when()
+                .delete("/products/{id}", nonExistingId)
+                .then()
+                .statusCode(404);
+    }
+
+    @Test
+    public void deleteShouldReturn400DependentIdWhenLoggedAsAdmin() {
+        dependantId = 1L;
+
+        given()
+                //isso serve para especificar o tipo da informação
+                .header("Authorization", "Bearer " + adminToken)
+
+                .when()
+                .delete("/products/{id}", dependantId)
+                .then()
+                .statusCode(400);
+    }
+
+    @Test
+    public void deleteShouldReturn403WhenLoggedAsclient() {
+        existingId = 5L;
+
+        given()
+                //isso serve para especificar o tipo da informação
+                .header("Authorization", "Bearer " + clientToken)
+
+                .when()
+                .delete("/products/{id}", existingId)
+                .then()
+                .statusCode(403);
+    }
+
+    @Test
+    public void deleteShouldReturn401WhenInvalidToken() {
+        existingId = 5L;
+
+        given()
+                //isso serve para especificar o tipo da informação
+                .header("Authorization", "Bearer " + invalidToken)
+
+                .when()
+                .delete("/products/{id}", existingId)
+                .then()
+                .statusCode(401);
+    }
+
+
 }
